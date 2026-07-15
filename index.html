@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบตรวจสอบความถูกต้องสลิปเงินเดือน (Salary Verification System)</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS (Excel parser) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- PDF.js (PDF parser) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <!-- Tesseract.js (OCR for image payslips) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
+    <!-- Mammoth.js (Word parser) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Menu -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <i class="fa-solid fa-wallet logo-icon"></i>
+                <h2>ตรวจสอบเงินเดือน</h2>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-pie"></i> แดชบอร์ดสรุปผล
+                </button>
+                <button class="nav-item" data-tab="config">
+                    <i class="fa-solid fa-sliders"></i> ตั้งค่าการคำนวณ
+                </button>
+                <button class="nav-item" data-tab="attendance">
+                    <i class="fa-solid fa-calendar-days"></i> ตารางเวลางาน
+                </button>
+                <button class="nav-item" data-tab="payslip-ocr">
+                    <i class="fa-solid fa-file-invoice-dollar"></i> อัปโหลดและตรวจสอบ
+                </button>
+                <button class="nav-item" data-tab="tests" id="tab-btn-tests">
+                    <i class="fa-solid fa-vial"></i> ผลการทดสอบสูตร
+                </button>
+                <button class="nav-item" data-tab="admin-audit" id="tab-btn-admin-audit" style="border-left: 3px solid var(--danger-color); display: none;">
+                    <i class="fa-solid fa-user-shield text-danger"></i> ส่งตรวจสอบ (Admin)
+                </button>
+                <button class="nav-item" data-tab="employee-results" id="tab-btn-employee-results" style="border-left: 3px solid var(--success-color); display: none;">
+                    <i class="fa-solid fa-clipboard-check text-success"></i> ผลการตรวจสอบ (Results)
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="load-demo-btn" class="btn btn-secondary btn-block">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> โหลดข้อมูลทดสอบ (Demo)
+                </button>
+                <div class="theme-toggle">
+                    <span>โหมดมืด</span>
+                    <label class="switch">
+                        <input type="checkbox" id="theme-switch" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="topbar">
+                <div class="topbar-title">
+                    <h1 id="page-title">แดชบอร์ดสรุปผล</h1>
+                    <p class="subtitle text-muted">ระบบคำนวณและตรวจสอบส่วนต่างสลิปเงินเดือนพนักงานโดยอัตโนมัติ</p>
+                </div>
+                <div class="flex-row align-center gap-2">
+                    <div class="lang-selector mr-2">
+                        <i class="fa-solid fa-earth-americas text-muted mr-1"></i>
+                        <select id="lang-select" class="form-control form-control-sm" style="width: auto; display: inline-block;">
+                            <option value="en" selected>English</option>
+                            <option value="zh">繁體中文</option>
+                            <option value="th">ไทย</option>
+                        </select>
+                    </div>
+                    <div class="employee-meta-badge" id="employee-badge" style="display: none;">
+                        <i class="fa-solid fa-user-tie"></i> <span id="badge-emp-name">พนักงานตัวอย่าง (กะดึก -> กะเช้า)</span>
+                    </div>
+                    <!-- User Session Section -->
+                    <div class="user-session-badge" id="user-session-container" style="display: none; align-items: center; gap: 8px;">
+                        <span id="badge-username" style="font-size: 0.85rem; font-weight: bold; color: var(--text-main);"><i class="fa-solid fa-user-circle"></i> Guest</span>
+                        <button class="btn btn-outline-primary btn-xs" id="change-pw-btn" style="padding: 4px 8px; font-size: 0.7rem;"><i class="fa-solid fa-key"></i> เปลี่ยนรหัสผ่าน</button>
+                        <button class="btn btn-outline-danger btn-xs" id="logout-btn" style="padding: 4px 8px; font-size: 0.7rem;"><i class="fa-solid fa-right-from-bracket"></i> ออกจากระบบ</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- TAB 1: Dashboard -->
+            <section class="tab-content active" id="tab-dashboard">
+                <!-- Placeholder for Empty State -->
+                <div id="dashboard-placeholder" class="text-center p-5 card shadow-lg" style="margin: 2rem auto; max-width: 800px; border-radius: 12px; background: var(--card-bg);">
+                    <div class="card-body py-5 flex-column align-center justify-center gap-3">
+                        <div class="mb-2">
+                            <i class="fa-solid fa-folder-open text-primary" style="font-size: 4.5rem; opacity: 0.85; filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.15));"></i>
+                        </div>
+                        <h3 class="font-bold mb-1" id="placeholder-title" style="font-size: 1.5rem; color: var(--text-primary);">ยังไม่มีข้อมูลสำหรับการเปรียบเทียบ</h3>
+                        <p class="text-muted mb-4" id="placeholder-desc" style="max-width: 500px; line-height: 1.6; font-size: 0.95rem;">กรุณานำเข้าข้อมูลประวัติการทำงาน (Timesheet) และสลิปเงินเดือน (Payslip) หรือเลือกโหลดรายงานประวัติการตรวจสอบเพื่อเริ่มต้นใช้งาน</p>
+                        <div class="flex-row justify-center gap-3">
+                            <button type="button" class="btn btn-primary btn-sm px-4 py-2" onclick="switchTab('config')" id="btn-goto-config">
+                                <i class="fa-solid fa-cog"></i> ไปที่เมนูตั้งค่า
+                            </button>
+                            <button type="button" class="btn btn-warning btn-sm px-4 py-2" onclick="switchTab('payslip-ocr')" id="btn-goto-upload">
+                                <i class="fa-solid fa-upload"></i> อัปโหลดไฟล์เพื่อเปรียบเทียบ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actual dashboard content wrapper -->
+                <div id="dashboard-content-wrapper" style="display: none;">
+                    <!-- Lock Banner -->
+                    <div id="lock-banner" class="alert alert-warning flex-row align-center justify-between p-3 mb-4" style="display: none; border-left: 5px solid var(--danger-color); border-radius: 8px; box-shadow: var(--shadow-sm);">
+                        <div class="flex-row align-center">
+                            <i class="fa-solid fa-lock text-danger mr-3" style="font-size: 1.3rem;"></i>
+                            <div>
+                                <strong id="lock-banner-text" style="color: var(--text-primary); font-size: 0.95rem;">รายงานการตรวจสอบนี้ถูกล็อกไว้เพื่อป้องกันการเปลี่ยนแปลงข้อมูลดั้งเดิม</strong>
+                                <small class="text-muted d-block mt-1">*หากต้องการแก้ไขค่าพารามิเตอร์หรือคำนวณใหม่ กรุณาปลดล็อกรายงาน</small>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-danger btn-sm" id="btn-banner-unlock" onclick="unlockLoadedReport()"><i class="fa-solid fa-key"></i> ปลดล็อกเพื่อแก้ไข</button>
+                    </div>
+
+                    <!-- Dispute Status Banner -->
+                    <div id="dispute-status-banner" class="alert p-3 mb-4" style="display: none; border-radius: 8px; box-shadow: var(--shadow-sm);">
+                        <div class="flex-row align-center justify-between flex-wrap gap-3">
+                            <div class="flex-row align-center">
+                                <i id="dispute-banner-icon" class="fa-solid mr-3" style="font-size: 1.3rem;"></i>
+                                <div>
+                                    <strong id="dispute-banner-title" style="font-size: 0.95rem; display: block;"></strong>
+                                    <span id="dispute-banner-desc" class="text-muted text-xs mt-1 d-block"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary Cards Row -->
+                    <div class="dashboard-grid">
+                    <div class="card status-card border-left-primary">
+                        <div class="card-body flex-row">
+                            <div>
+                                <h6 class="text-xs font-weight-bold text-primary text-uppercase mb-1">ผลการเปรียบเทียบสลิป</h6>
+                                <div class="h3 mb-0 font-weight-bold" id="match-status-title">ยังไม่ได้อัปโหลดข้อมูล</div>
+                                <p class="text-muted text-sm mt-1" id="match-status-desc">กรุณาอัปโหลดสลิปเงินเดือนและเวลางานเพื่อตรวจสอบ</p>
+                            </div>
+                            <div class="icon-circle bg-primary-light">
+                                <i class="fa-solid fa-circle-check text-primary" id="match-status-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card status-card border-left-success">
+                        <div class="card-body flex-row">
+                            <div>
+                                <h6 class="text-xs font-weight-bold text-success text-uppercase mb-1">ยอดคำนวณจากเวลางานจริง</h6>
+                                <div class="h3 mb-0 font-weight-bold" id="calc-net-salary">฿0.00</div>
+                                <p class="text-muted text-sm mt-1">เงินเดือนสุทธิหลังจากหักและเพิ่มสิทธิ์ต่างๆ</p>
+                            </div>
+                            <div class="icon-circle bg-success-light">
+                                <i class="fa-solid fa-calculator text-success"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card status-card border-left-warning">
+                        <div class="card-body flex-row">
+                            <div>
+                                <h6 class="text-xs font-weight-bold text-warning text-uppercase mb-1">ยอดเงินตามสลิปเงินเดือน</h6>
+                                <div class="h3 mb-0 font-weight-bold" id="slip-net-salary">฿0.00</div>
+                                <p class="text-muted text-sm mt-1">ยอดเงินสุทธิที่ได้จากรูปสลิปหรือการระบุข้อมูล</p>
+                            </div>
+                            <div class="icon-circle bg-warning-light">
+                                <i class="fa-solid fa-receipt text-warning"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card status-card border-left-danger">
+                        <div class="card-body flex-row">
+                            <div>
+                                <h6 class="text-xs font-weight-bold text-danger text-uppercase mb-1">ส่วนต่างที่พบ</h6>
+                                <div class="h3 mb-0 font-weight-bold" id="diff-salary">฿0.00</div>
+                                <p class="text-muted text-sm mt-1" id="diff-salary-desc">ส่วนต่างสุทธิ (ค่าบวก: สลิปได้มากกว่า, ค่าลบ: ได้น้อยกว่า)</p>
+                            </div>
+                            <div class="icon-circle bg-danger-light">
+                                <i class="fa-solid fa-circle-xmark text-danger"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Analysis Section -->
+                <div class="row">
+                    <!-- Left: Comparison Report Details -->
+                    <div class="col-8">
+                        <div class="card shadow-lg mb-4">
+                            <div class="card-header flex-row justify-between align-center">
+                                <div class="flex-row align-center">
+                                    <h3><i class="fa-solid fa-magnifying-glass-dollar text-primary"></i> รายละเอียดการเปรียบเทียบเชิงลึก</h3>
+                                    <span id="active-employee-badge" class="badge bg-primary text-white ml-3" style="font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; display: inline-block;">ชื่อ: พนักงานตัวอย่าง (ทีม: ออดิท)</span>
+                                </div>
+                                <div class="flex-row gap-2">
+                                    <button type="button" class="btn btn-danger btn-sm" id="unlock-report-btn" style="display: none;" onclick="unlockLoadedReport()">
+                                        <i class="fa-solid fa-lock-open"></i> ปลดล็อกรายงาน
+                                    </button>
+                                    <button class="btn btn-warning btn-sm" id="update-report-btn" style="display: none;">
+                                        <i class="fa-solid fa-arrows-rotate"></i> อัปเดตรายงาน
+                                    </button>
+                                    <button class="btn btn-success btn-sm" id="save-history-btn">
+                                        <i class="fa-solid fa-floppy-disk"></i> บันทึกประวัติ
+                                    </button>
+                                    <button class="btn btn-primary btn-sm" id="export-report-btn">
+                                        <i class="fa-solid fa-download"></i> ส่งออกรายงาน
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-striped text-center">
+                                        <thead>
+                                            <tr>
+                                                <th>รายการ</th>
+                                                <th>ยอดจากเวลางานจริง (คำนวณ)</th>
+                                                <th>ยอดตามสลิปเงินเดือน</th>
+                                                <th>ส่วนต่าง</th>
+                                                <th>เพิ่ม/ลดยอด</th>
+                                                <th>หมายเหตุ</th>
+                                                <th>สถานะ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="comparison-table-body">
+                                            <tr>
+                                                <td colspan="7" class="text-center py-4 text-muted">กรุณาเลือกหรืออัปโหลดข้อมูลพนักงานเพื่อดูรายละเอียดเปรียบเทียบ</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <!-- Narrative Explanation of Discrepancies -->
+                                <div class="discrepancy-narrative mt-4" id="discrepancy-narrative-box">
+                                    <div class="alert alert-info">
+                                        <h4><i class="fa-solid fa-circle-info"></i> คำแนะนำ</h4>
+                                        <p>ระบบยังไม่มีข้อมูลสำหรับเปรียบเทียบ คุณสามารถทำได้โดย:</p>
+                                        <ul>
+                                            <li>กดปุ่ม <strong>"โหลดข้อมูลทดสอบ (Demo)"</strong> มุมซ้ายล่างเพื่อดูหน้าตัวอย่างทันที</li>
+                                            <li>หรือเปิดแท็บ <strong>"อัปโหลดและตรวจสอบ"</strong> เพื่ออัปโหลดไฟล์เวลางานและสลิปเงินเดือนพนักงานจริง</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Summary Insights -->
+                    <div class="col-4">
+                        <div class="card shadow-lg mb-4">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-calendar-check text-success"></i> สรุปวันหยุดและสิทธิ์พิเศษ</h3>
+                            </div>
+                            <div class="card-body">
+                                <ul class="insight-list">
+                                    <li>
+                                        <div class="insight-label">วันหยุดสะสมยกมาจากไตรมาส:</div>
+                                        <div class="insight-value text-warning font-bold" id="stat-off-days-carryover">0 วัน</div>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">จำนวนวันหยุดประจำ (Off day) ทั้งเดือน:</div>
+                                        <div class="insight-value text-primary font-bold" id="stat-off-days-limit">4 วัน</div>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">จำนวนวันหยุดประจำที่หยุดจริง (Off day Leave):</div>
+                                        <div class="insight-value" id="stat-off-days-taken">0 วัน</div>
+                                    </li>
+                                    <li class="highlight-success-box">
+                                        <div class="insight-label">วันหยุดประจำสะสมรับเงินคืนได้ (เดือนนี้):</div>
+                                        <div class="insight-value text-success font-bold" id="stat-off-days-cash">4 วัน</div>
+                                        <small class="d-block text-muted text-xs mt-1">*สามารถสะสมและรับเงินคืนเป็นรายไตรมาส</small>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">วันหยุดบังคับใช้ (Compulsory Leave) ในเดือน:</div>
+                                        <div class="insight-value text-info font-bold">1 วัน</div>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">วันหยุดบังคับใช้ที่หยุดจริง:</div>
+                                        <div class="insight-value" id="stat-compulsory-taken">0 วัน</div>
+                                        <small class="d-block text-muted text-xs mt-1">*ไม่หักเงินเดือน และหากไม่หยุดจะไม่สามารถเปลี่ยนเป็นเงินได้</small>
+                                    </li>
+                                    <li id="stat-shift-change-container" style="display:none;">
+                                        <div class="insight-label">วันหยุดเปลี่ยนกะ (Shift Change Off):</div>
+                                        <div class="insight-value text-warning font-bold" id="stat-shift-change-taken">0 / 1 วัน</div>
+                                        <small class="d-block text-muted text-xs mt-1">*สำหรับกะดึกย้ายไปกะเช้า 1 วัน ไม่หักเงินเดือน</small>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">เงินประกันพนักงานใหม่ (New staff deposit 15%):</div>
+                                        <div class="insight-value" id="stat-probation-applied">ไม่หัก</div>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">เบี้ยขยัน (Diligent Allowance):</div>
+                                        <div class="insight-value" id="stat-diligent-allowance">฿0.00</div>
+                                    </li>
+                                    <li>
+                                        <div class="insight-label">สิทธิ์ได้รับเบี้ยขยัน:</div>
+                                        <div class="insight-value" id="stat-diligent-reason">ไม่มีข้อมูล</div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: ประวัติการตรวจสอบล่าสุด -->
+                        <div class="card shadow-lg mt-4">
+                            <div class="card-header flex-row justify-between align-center" style="padding: 14px 20px;">
+                                <h3><i class="fa-solid fa-clock-rotate-left text-primary"></i> ประวัติการตรวจสอบ</h3>
+                                <button id="clear-all-history-btn" class="btn btn-outline-danger btn-sm" style="padding: 2px 6px; font-size: 0.75rem;">
+                                    ล้างทั้งหมด
+                                </button>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="mb-3">
+                                    <h4 class="text-xs font-bold text-muted mb-2 flex-row align-center" style="font-size: 0.75rem;">
+                                        <i class="fa-solid fa-users-gear mr-1 text-primary"></i> 
+                                        <span id="label-team-audit-history">ทีมออดิท (Audit Team)</span>
+                                    </h4>
+                                    <div class="history-list" id="history-records-list-audit" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; background-color: var(--card-bg);">
+                                        <div class="text-center py-2 text-muted text-xs">ไม่มีประวัติการตรวจสอบของทีมออดิท</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-muted mb-2 flex-row align-center" style="font-size: 0.75rem;">
+                                        <i class="fa-solid fa-headset mr-1 text-success"></i> 
+                                        <span id="label-team-cs-history">ทีม CS (CS Team)</span>
+                                    </h4>
+                                    <div class="history-list" id="history-records-list-cs" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; background-color: var(--card-bg);">
+                                        <div class="text-center py-2 text-muted text-xs">ไม่มีประวัติการตรวจสอบของทีม CS</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div> <!-- End of #dashboard-content-wrapper -->
+            </section>
+
+            <!-- TAB 2: Configurations -->
+            <section class="tab-content" id="tab-config">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="card shadow-lg">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-sliders text-primary"></i> ตั้งค่าการตรวจสอบ</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="config-form">
+                                    <!-- ชื่อพนักงาน -->
+                                    <div class="form-group">
+                                        <label for="employee-name-input" class="form-label">ชื่อ-นามสกุล พนักงานที่ตรวจสอบ:</label>
+                                        <input type="text" id="employee-name-input" class="form-control" placeholder="กรอกชื่อ-นามสกุลพนักงาน" value="พนักงานตัวอย่าง (กะดึก -> กะเช้า)">
+                                    </div>
+
+                                    <!-- ทีมพนักงาน -->
+                                    <div class="form-group">
+                                        <label for="employee-team-select" class="form-label" id="label-employee-team">ทีมพนักงาน (Team):</label>
+                                        <select id="employee-team-select" class="form-control">
+                                            <option value="Audit" selected>ทีมออดิท (Audit Team)</option>
+                                            <option value="CS">ทีม CS (CS Team)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- ฐานเงินเดือน -->
+                                    <div class="form-group">
+                                        <label for="base-salary-select" class="form-label">ฐานเงินเดือนพนักงาน (บาท):</label>
+                                        <select id="base-salary-select" class="form-control">
+                                            <option value="18000">18,000</option>
+                                            <option value="20000">20,000</option>
+                                            <option value="23000" selected>23,000</option>
+                                            <option value="25000">25,000</option>
+                                            <option value="2000">2,000</option>
+                                            <option value="30000">30,000</option>
+                                            <option value="custom">กำหนดเอง (Custom)...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" id="custom-salary-group" style="display: none;">
+                                        <label for="custom-salary-input" class="form-label">ระบุฐานเงินเดือนที่ต้องการ (บาท):</label>
+                                        <input type="number" id="custom-salary-input" class="form-control" placeholder="ระบุจำนวนเงิน" value="23000">
+                                    </div>
+
+                                    <!-- เมนูเลือกกะพนักงานและการเปลี่ยนกะ -->
+                                     <div class="form-group">
+                                         <label class="form-label d-block font-bold mb-2" id="label-shift-type-select">ประเภทกะและการเปลี่ยนกะในเดือนนี้:</label>
+                                         <select id="shift-type-select" class="form-control font-bold mb-3" style="border-color: var(--primary-color); border-width: 2px;">
+                                             <option value="pure_day" id="opt-pure-day">☀️ กะเช้าล้วน (Pure Day Shift)</option>
+                                             <option value="pure_night" id="opt-pure-night">🌙 กะดึกล้วน (Pure Night Shift)</option>
+                                             <option value="day_to_night" id="opt-day-to-night">☀️ ➡️ 🌙 เปลี่ยนกะ: เช้า ไป ดึก (Day to Night)</option>
+                                             <option value="night_to_day" id="opt-night-to-day">🌙 ➡️ ☀️ เปลี่ยนกะ: ดึก ไป เช้า (Night to Day)</option>
+                                         </select>
+                                     </div>
+
+                                    <!-- พนักงานใหม่หัก 15% -->
+                                    <div class="form-group card-checkbox">
+                                        <div class="flex-row justify-between">
+                                            <div>
+                                                <span class="form-label font-bold d-block">พนักงานใหม่ (New staff deposit)</span>
+                                                <small class="text-muted">หักเงินประกันพนักงานใหม่ 15% จากฐานเงินเดือน เป็นระยะเวลา 3 เดือน</small>
+                                            </div>
+                                            <label class="switch">
+                                                <input type="checkbox" id="probation-switch">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- วันเริ่มทำงานพนักงาน -->
+                                    <div class="form-group mb-3">
+                                        <label for="config-hire-date" class="form-label font-bold">วันเริ่มทำงาน (Hire Date):</label>
+                                        <input type="date" id="config-hire-date" class="form-control">
+                                        <small class="text-muted d-block mt-1">ใช้สำหรับการคำนวณหักเงินประกันพนักงานใหม่ 15% และสิทธิ์สะสมวันหยุดเปลี่ยนเป็นเงิน</small>
+                                    </div>
+
+
+                                    <!-- ทำงานไม่เต็มเดือน -->
+                                    <div class="form-group card-checkbox">
+                                        <div class="flex-row justify-between align-center">
+                                            <div>
+                                                <span class="form-label font-bold d-block">พนักงานเริ่มงานไม่เต็มเดือน</span>
+                                                <small class="text-muted">หมดสิทธิ์ได้เบี้ยขยันโดยอัตโนมัติ</small>
+                                            </div>
+                                            <label class="switch">
+                                                <input type="checkbox" id="midmonth-switch">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                        <div class="mt-3" id="midmonth-days-group" style="display: none;">
+                                            <label for="midmonth-days-input" class="form-label">ระบุจำนวนวันที่ทำงานเกินจากรอบคำนวณเงินเดือน (วัน):</label>
+                                            <input type="number" id="midmonth-days-input" class="form-control" min="0" max="31" value="0">
+                                        </div>
+                                    </div>
+
+                                    <!-- กรอบรายละเอียดกะเช้า -->
+                                    <div id="day-shift-settings" class="shift-settings-box alert alert-primary">
+                                        <h4 class="mb-2"><i class="fa-solid fa-sun"></i> ตั้งค่าข้อมูลกะเช้า</h4>
+                                        <div class="form-group mb-0">
+                                            <label for="day-shift-start-date" class="form-label" id="label-day-shift-start-date">วันที่เริ่มเข้ากะดึกเป็นวันแรก:</label>
+                                            <input type="date" id="day-shift-start-date" class="form-control">
+                                            <small class="text-muted d-block mt-1" id="desc-day-shift-start-date">*พนักงานจะเป็นกะเช้าตั้งแต่วันที่ 1 และจะเปลี่ยนเป็นกะดึกตั้งแต่วันที่ระบุเป็นต้นไป</small>
+                                        </div>
+                                    </div>
+
+                                    <!-- กรอบรายละเอียดกะดึก -->
+                                    <div id="night-shift-settings" class="shift-settings-box alert alert-warning" style="display: none;">
+                                        <h4 class="mb-3"><i class="fa-solid fa-moon"></i> ตั้งค่าข้อมูลกะดึก</h4>
+                                        <div class="form-group">
+                                            <label for="night-shift-off-date" class="form-label">ระบุวันที่เป็นวันหยุดเปลี่ยนกะ (Shift Change Off Day):</label>
+                                            <input type="date" id="night-shift-off-date" class="form-control">
+                                            <small class="text-muted">ได้หยุด 1 วัน ได้รับค่าจ้างปกติ ไม่หักเงินเดือน</small>
+                                        </div>
+                                        <div class="form-group mb-0">
+                                            <label for="night-shift-transition-date" class="form-label">วันที่พนักงานเปลี่ยนกะขึ้นมาทำงานกะเช้าวันแรก:</label>
+                                            <input type="date" id="night-shift-transition-date" class="form-control">
+                                            <small class="text-muted">วันหลังจากนี้ระบบจะคำนวณด้วยเกณฑ์เวลาการเข้างานของกะเช้า</small>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ค่าคงที่อื่นๆ -->
+                    <div class="col-6">
+                        <div class="card shadow-lg">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-gear text-success"></i> ค่าเบี้ยขยันและเบี้ยเลี้ยง (ตั้งค่าระบบ)</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="config-diligent-amount" class="form-label">ค่าเบี้ยขยันคงที่ (บาทต่อเดือน):</label>
+                                    <input type="number" id="config-diligent-amount" class="form-control" value="1550" readonly>
+                                    <small class="text-muted">ล็อกไว้ที่ 1,550 บาทตามที่กำหนดในเกณฑ์ และจะถูกหักหมดหากเข้าสาย ขาดงาน หรือลาแบบ Unpaid leave</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="config-nightshift-allowance" class="form-label">อัตราค่าเบี้ยเลี้ยงกะดึกต่อชั่วโมง (บาท) (ตายตัว):</label>
+                                    <input type="number" id="config-nightshift-allowance" class="form-control" value="10.25" readonly>
+                                    <small class="text-muted" id="config-nightshift-allowance-desc">อัตราค่าเบี้ยเลี้ยงคงที่ 10.25 บาทต่อชั่วโมง โดยจะคำนวณตั้งแต่เวลา เที่ยงคืน (00:00) ไปจนถึง เวลาเลิกกะดึกของแต่ละทีมตามกฎการตั้งค่า (เช่น กะดึกเลิก 08:00AM = 8 ชั่วโมง x 10.25 = 82 บาท, เลิก 09:00AM = 9 ชั่วโมง x 10.25 = 92.25 บาท) โดยไม่ขึ้นกับประวัติสแกนออกจริง</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label font-bold">อัตราหักปรับของบันทึกเวลา (Attendance Deduction) (ตายตัว):</label>
+                                    <div class="row">
+                                        <div class="col-4 mb-2">
+                                            <label for="config-incomplete-rate" class="form-label text-xs">สแกนไม่ครบ (Incomplete) (USD/วัน):</label>
+                                            <input type="number" id="config-incomplete-rate" class="form-control form-control-sm" value="5" readonly>
+                                        </div>
+                                        <div class="col-4 mb-2">
+                                            <label for="config-late-rate" class="form-label text-xs">เข้างานสาย (Late) (USD/ครั้ง):</label>
+                                            <input type="number" id="config-late-rate" class="form-control form-control-sm" value="5" readonly>
+                                        </div>
+                                        <div class="col-4 mb-2">
+                                            <label for="config-exchange-rate" class="form-label text-xs font-bold text-primary">อัตราแลกเปลี่ยนต่อ 1 USD (บาท):</label>
+                                            <input type="number" id="config-exchange-rate" class="form-control form-control-sm border-primary" step="0.01" min="1" value="35.00">
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 p-3 rounded border" style="font-size: 0.8rem; line-height: 1.6; background-color: rgba(255, 255, 255, 0.03); border-color: var(--border-color); color: var(--text-color);">
+                                        <div class="mb-2 text-warning font-bold">
+                                            <i class="fa-solid fa-circle-info"></i> รายละเอียดเกณฑ์และสูตรการคำนวณ:
+                                        </div>
+                                        <ul style="padding-left: 1.25rem; margin-bottom: 0;">
+                                            <li class="mb-2">
+                                                <strong>การคำนวณ attendance incomplete</strong>: 1 วัน หัก 5 ดอลลาร์ USD (แปลงเป็นเงินบาทตามอัตราแลกเปลี่ยน) ส่งคำร้องขอยกเลิกได้หากมีความผิดพลาดที่เกิดจากระบบ แต่ต้องมีหลักฐานและแจ้งภายในวันที่ไม่ได้ลงเวลาออกงานเท่านั้น
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>เข้างานสาย (Late)</strong>: หักให้อัตโนมัติ 1 วัน (ยกเว้นวันแรกสุดที่สาย) วันที่เหลือ หัก 5 ดอลลาร์ USD (แปลงเป็นเงินบาทตามอัตราแลกเปลี่ยน) ส่งคำร้องขอยกเลิกได้หากมีความผิดพลาดที่เกิดจากระบบ แต่ต้องมีหลักฐานและแจ้งภายในวันที่ลงเข้างานสายภายในวันช้าเท่านั้น
+                                            </li>
+                                            <li class="mb-2">
+                                                <strong>ทำงานบางส่วน (Partialday)</strong>: เกิดขึ้นเมื่อทำงานตั้งแต่หรือมากกว่า 8 ชั่วโมงขึ้นไป (การทำงานครึ่งวัน) โดยจะหักเงินครึ่งหนึ่งของอัตราการจ่ายเงินรายวันของวันที่ทำงานเต็มวันเท่านั้น (ฐานเงินเดือน / จำนวนวันในเดือน / 2) ส่งคำร้องขอยกเลิกได้หากมีข้อผิดพลาด
+                                            </li>
+                                            <li>
+                                                <strong>Unpaid Leave</strong>: คือกรณีที่พนักงานขาดงานโดยไม่ยื่นใบลา หรือใช้สิทธิ์ลาเกินกำหนด โดยจะคำนวณจาก: 
+                                                <div class="mt-1 font-semibold text-primary" style="font-family: monospace;">
+                                                    (ยอดฐานเงินเดือนพนักงาน / จำนวนวันตามปฏิทินในเดือนนั้น) * จำนวนวันที่ตรวจสอบว่าเข้าข่ายไม่ได้รับค่าจ้าง
+                                                </div>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                 <!-- 5 Registered Holidays Card -->
+                                 <div class="card shadow-lg mt-4 bg-light text-dark border">
+                                     <div class="card-header bg-success text-white py-2">
+                                         <h4 class="mb-0 text-white" style="font-size:1rem;"><i class="fa-solid fa-calendar-check"></i> วันหยุดประจำเดือนในระบบ (วันหยุดประจำสัปดาห์และนักขัตฤกษ์)</h4>
+                                     </div>
+                                     <div class="card-body p-3">
+                                         <p class="text-xs text-muted mb-2">*ระบุวันที่วันหยุดในระบบ เพื่อใช้ทำเครื่องหมายสถานะไม่หักเงินเดือนอัตโนมัติ และสิทธิ์รับเงินคืน</p>
+                                         <div class="holiday-inputs-container">
+                                             <!-- Slot 1: fixed compulsory -->
+                                             <div class="row mb-2 align-center">
+                                                 <div class="col-7">
+                                                     <input type="date" id="config-holiday-date-1" class="form-control form-control-sm">
+                                                 </div>
+                                                 <div class="col-5">
+                                                     <span class="badge bg-danger text-white py-1 px-2 d-block text-center" id="badge-holiday-type-1" style="font-size:0.75rem;">วันหยุดนักขัตฤกษ์</span>
+                                                 </div>
+                                             </div>
+                                             <!-- Slot 2: fixed off -->
+                                             <div class="row mb-2 align-center">
+                                                 <div class="col-7">
+                                                     <input type="date" id="config-holiday-date-2" class="form-control form-control-sm">
+                                                 </div>
+                                                 <div class="col-5">
+                                                     <span class="badge bg-secondary text-white py-1 px-2 d-block text-center" id="badge-holiday-type-2" style="font-size:0.75rem;">วันหยุดประจำสัปดาห์</span>
+                                                 </div>
+                                             </div>
+                                             <!-- Slot 3: fixed off -->
+                                             <div class="row mb-2 align-center">
+                                                 <div class="col-7">
+                                                     <input type="date" id="config-holiday-date-3" class="form-control form-control-sm">
+                                                 </div>
+                                                 <div class="col-5">
+                                                     <span class="badge bg-secondary text-white py-1 px-2 d-block text-center" id="badge-holiday-type-3" style="font-size:0.75rem;">วันหยุดประจำสัปดาห์</span>
+                                                 </div>
+                                             </div>
+                                             <!-- Slot 4: fixed off -->
+                                             <div class="row mb-2 align-center">
+                                                 <div class="col-7">
+                                                     <input type="date" id="config-holiday-date-4" class="form-control form-control-sm">
+                                                 </div>
+                                                 <div class="col-5">
+                                                     <span class="badge bg-secondary text-white py-1 px-2 d-block text-center" id="badge-holiday-type-4" style="font-size:0.75rem;">วันหยุดประจำสัปดาห์</span>
+                                                 </div>
+                                             </div>
+                                             <!-- Slot 5: fixed off -->
+                                             <div class="row align-center">
+                                                 <div class="col-7">
+                                                     <input type="date" id="config-holiday-date-5" class="form-control form-control-sm">
+                                                 </div>
+                                                 <div class="col-5">
+                                                     <span class="badge bg-secondary text-white py-1 px-2 d-block text-center" id="badge-holiday-type-5" style="font-size:0.75rem;">วันหยุดประจำสัปดาห์</span>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <!-- Additional Unpaid Leave Holidays Section -->
+                                         <div class="border-top mt-3 pt-3">
+                                             <h5 class="text-xs font-bold text-muted mb-2"><i class="fa-solid fa-user-slash text-danger"></i> วันหยุดเพิ่มเติม (หักเงิน/Unpaid Leave เช่น ลาป่วย/ฉุกเฉิน)</h5>
+                                             <div id="additional-holidays-container">
+                                                 <!-- Dynamic unpaid holiday rows go here -->
+                                             </div>
+                                             <button type="button" class="btn btn-danger btn-xs mt-2 w-100" id="btn-add-unpaid-holiday">
+                                                 <i class="fa-solid fa-plus"></i> เพิ่มวันหยุดหักเงิน (Unpaid Leave)
+                                             </button>
+                                         </div>
+                                     </div>
+                                 </div>
+
+                                 <!-- interactive shift rules card -->
+                                 <div class="card shadow-lg mt-4 bg-light text-dark border">
+                                     <div class="card-header bg-primary text-white py-2">
+                                         <h4 class="mb-0 text-white" style="font-size:1rem;"><i class="fa-solid fa-clock"></i> กฎระเบียบเวลาเข้าออกงาน (Work Shift Rules)</h4>
+                                     </div>
+                                     <div class="card-body p-3">
+                                         <!-- โซนเวลา -->
+                                         <div class="form-group mb-3">
+                                             <label for="config-timezone" class="form-label font-bold text-sm">โซนเวลาคำนวณเงินเดือน (Payroll Timezone):</label>
+                                             <select id="config-timezone" class="form-control form-control-sm">
+                                                 <option value="Bangkok" selected>กรุงเทพฯ (Bangkok GMT+7)</option>
+                                                 <option value="Malaysia">มาเลเซีย (Malaysia GMT+8)</option>
+                                             </select>
+                                             <small class="text-muted d-block text-xs mt-1">*ระบบจะแปลงเวลาบันทึกงานโดยอัตโนมัติหากโซนเวลาในไฟล์ไม่ตรงกับโซนเวลาที่เลือก</small>
+                                         </div>
+
+                                         <!-- เวลาทำงานปกติ (ช่วงแรก) -->
+                                         <div class="border-top pt-2 mt-2">
+                                             <h5 class="font-bold text-xs mb-2">เวลาทำงานปกติ (Standard Timing)</h5>
+                                             <div class="row">
+                                                 <div class="col-6 mb-2">
+                                                     <label for="rule-before-day-start" class="form-label text-xs">กะเช้า เข้างาน:</label>
+                                                     <input type="time" id="rule-before-day-start" class="form-control form-control-sm" value="08:00">
+                                                 </div>
+                                                 <div class="col-6 mb-2">
+                                                     <label for="rule-before-day-end" class="form-label text-xs">กะเช้า เลิกงาน:</label>
+                                                     <input type="time" id="rule-before-day-end" class="form-control form-control-sm" value="20:00">
+                                                 </div>
+                                             </div>
+                                             <div class="row">
+                                                 <div class="col-6 mb-2">
+                                                     <label for="rule-before-night-start" class="form-label text-xs">กะดึก เข้างาน:</label>
+                                                     <input type="time" id="rule-before-night-start" class="form-control form-control-sm" value="20:00">
+                                                 </div>
+                                                 <div class="col-6 mb-2">
+                                                     <label for="rule-before-night-end" class="form-label text-xs">กะดึก เลิกงาน:</label>
+                                                     <input type="time" id="rule-before-night-end" class="form-control form-control-sm" value="08:00">
+                                                 </div>
+                                             </div>
+                                         </div>
+
+                                         <!-- การเปลี่ยนแปลงเวลาเข้าออกงาน -->
+                                         <div class="border-top pt-2 mt-2">
+                                             <div class="flex-row justify-between align-center mb-2">
+                                                 <h5 class="font-bold text-xs mb-0">ปรับเปลี่ยนเวลาทำงานระหว่างเดือน</h5>
+                                                 <label class="switch switch-xs">
+                                                     <input type="checkbox" id="config-has-time-change" checked>
+                                                     <span class="slider round"></span>
+                                                 </label>
+                                             </div>
+                                             
+                                             <div id="time-change-details-group">
+                                                 <div class="form-group mb-2">
+                                                     <label for="config-time-change-date" class="form-label text-xs">วันที่เริ่มเปลี่ยนเวลาเข้างานใหม่:</label>
+                                                     <input type="date" id="config-time-change-date" class="form-control form-control-sm" value="2026-05-25">
+                                                 </div>
+
+                                                 <h5 class="font-bold text-xs mb-2 text-warning"><i class="fa-solid fa-business-time"></i> เวลาทำงานกะใหม่ (New Timing):</h5>
+                                                 <div class="row">
+                                                     <div class="col-6 mb-2">
+                                                         <label for="rule-after-day-start" class="form-label text-xs">กะเช้าใหม่ เข้า:</label>
+                                                         <input type="time" id="rule-after-day-start" class="form-control form-control-sm" value="09:00">
+                                                     </div>
+                                                     <div class="col-6 mb-2">
+                                                         <label for="rule-after-day-end" class="form-label text-xs">กะเช้าใหม่ เลิก:</label>
+                                                         <input type="time" id="rule-after-day-end" class="form-control form-control-sm" value="21:00">
+                                                     </div>
+                                                 </div>
+                                                 <div class="row">
+                                                     <div class="col-6 mb-2">
+                                                         <label for="rule-after-night-start" class="form-label text-xs">กะดึกใหม่ เข้า:</label>
+                                                         <input type="time" id="rule-after-night-start" class="form-control form-control-sm" value="21:00">
+                                                     </div>
+                                                     <div class="col-6 mb-2">
+                                                         <label for="rule-after-night-end" class="form-label text-xs">กะดึกใหม่ เลิก:</label>
+                                                         <input type="time" id="rule-after-night-end" class="form-control form-control-sm" value="09:00">
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-4 mb-2 text-center">
+                    <div class="col-12" style="display: flex; gap: 15px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-secondary btn-lg" id="clear-settings-btn" style="min-width: 180px; font-size: 1.1rem; padding: 12px 28px; box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);">
+                            <i class="fa-solid fa-rotate-left mr-2"></i> ล้างการตั้งค่า (Clear)
+                        </button>
+                        <button class="btn btn-success btn-lg" id="save-settings-btn" style="min-width: 280px; font-size: 1.1rem; padding: 12px 28px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);">
+                            <i class="fa-solid fa-floppy-disk mr-2"></i> บันทึกข้อมูลและประมวลผล (Save & Calculate)
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: Attendance Grid & Log Calendar -->
+            <section class="tab-content" id="tab-attendance">
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header flex-row justify-between align-center">
+                        <div class="flex-row align-center">
+                            <h3><i class="fa-solid fa-calendar-days text-primary"></i> รายละเอียดบันทึกเวลาและการทำงาน</h3>
+                            <select id="month-picker" class="form-control form-control-sm ml-3" style="width: auto;">
+                                <option value="2026-05" selected>พฤษภาคม 2569</option>
+                                <option value="2026-06">มิถุนายน 2569</option>
+                            </select>
+                        </div>
+                        <div class="flex-row">
+                            <button id="add-row-btn" class="btn btn-outline-success btn-sm mr-2">
+                                <i class="fa-solid fa-plus"></i> เพิ่มแถวข้อมูลวันทำงาน
+                            </button>
+                            <button id="reset-attendance-btn" class="btn btn-outline-danger btn-sm">
+                                <i class="fa-solid fa-rotate-left"></i> ล้างเวลางานทั้งหมด
+                            </button>
+                            <button id="submit-dispute-btn" class="btn btn-warning btn-sm ml-2 font-bold">
+                                <i class="fa-solid fa-paper-plane"></i> ส่งคำร้องขอตรวจสอบ (Submit Dispute)
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <!-- อัปโหลดไฟล์บันทึกเวลางาน (ย้ายมาจากหน้าอัปโหลด) -->
+                        <div class="card bg-dark-2 border mb-4" id="timesheet-upload-zone" style="cursor: pointer;">
+                            <div class="card-body p-3 flex-row align-center justify-between gap-3 flex-wrap">
+                                <div class="flex-row align-center gap-2">
+                                    <i class="fa-solid fa-file-excel text-success fa-xl"></i>
+                                    <div>
+                                        <strong class="text-sm">อัปโหลดไฟล์บันทึกเวลาทำงานพนักงาน</strong>
+                                        <span class="text-muted text-xs d-block">รองรับไฟล์ CSV, Excel (.xlsx, .xls), TXT, JSON</span>
+                                    </div>
+                                </div>
+                                <div class="flex-row align-center gap-2">
+                                    <span class="badge bg-secondary text-light text-xs py-1 px-2" id="timesheet-file-name">ยังไม่ได้เลือกไฟล์</span>
+                                    <input type="file" id="timesheet-file-input" accept=".csv,.xlsx,.xls,.txt,.json" class="d-none">
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('timesheet-file-input').click()">
+                                        <i class="fa-solid fa-folder-open"></i> เลือกไฟล์เวลางาน
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-xs d-none" id="clear-timesheet-btn" onclick="event.stopPropagation();">
+                                        <i class="fa-solid fa-trash-can"></i> ล้างไฟล์
+                                    </button>
+                                    <a href="#" id="download-csv-template" class="btn btn-outline-secondary btn-xs text-decoration-none">
+                                        <i class="fa-solid fa-download"></i> ดาวน์โหลดเทมเพลต CSV
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legend of states -->
+                        <div class="status-legend mb-3 flex-row flex-wrap">
+                            <span class="legend-item"><span class="badge bg-success-light text-success">full day</span> ทำงานเต็มวัน</span>
+                            <span class="legend-item"><span class="badge bg-primary-light text-primary">on Leave</span> วันหยุดในระบบ (ไม่หักเงิน)</span>
+                            <span class="legend-item"><span class="badge bg-purple-light text-purple">absent</span> ขาดงาน (หักเงิน & หักเบี้ยขยัน)</span>
+                            <span class="legend-item"><span class="badge bg-warning-light text-warning">partialday</span> ลาครึ่งวัน/ลาแต่มาทำ (ไม่หักเงิน)</span>
+                            <span class="legend-item"><span class="badge bg-danger-light text-danger">late (สาย)</span> เข้างานสาย (หักสิทธิ์เบี้ยขยัน/เบี้ยเลี้ยง)</span>
+                        </div>
+
+                        <!-- Summary Stats for Off Days -->
+                        <div class="alert alert-info py-2 px-3 mb-3 flex-row justify-between align-center" id="attendance-summary-banner">
+                            <div>
+                                <i class="fa-solid fa-circle-info text-primary"></i> <strong>สรุปสิทธิ์วันหยุดสะสมเปลี่ยนเป็นเงินได้:</strong> 
+                                <span id="stat-remaining-off-days-text" class="font-bold text-primary">0 วัน</span>
+                            </div>
+                        </div>
+
+                        <!-- Editable Table Grid -->
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-hover table-bordered text-center align-middle" id="attendance-table">
+                                <thead class="sticky-top bg-dark">
+                                    <tr>
+                                        <th style="width: 4%">ลำดับ</th>
+                                        <th style="width: 12%">วันที่</th>
+                                        <th style="width: 10%">กะที่ทำงาน</th>
+                                        <th style="width: 11%">เวลาเข้างาน</th>
+                                        <th style="width: 11%">เวลาเลิกงาน</th>
+                                        <th style="width: 14%">สถานะการลงงาน</th>
+                                        <th style="width: 12%">การหยุด/วันหยุด</th>
+                                        <th style="width: 8%">เข้าสาย?</th>
+                                        <th style="width: 14%">ยอดบวก/หัก (บาท)</th>
+                                        <th style="width: 16%">แจ้งยกเลิก/แนบหลักฐาน</th>
+                                        <th style="width: 8%">ยกเลิก/Waive</th>
+                                        <th style="width: 4%">ลบ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attendance-table-body">
+                                    <tr>
+                                        <td colspan="12" class="text-center py-5 text-muted">
+                                            <i class="fa-regular fa-calendar-minus fa-3x mb-3 d-block"></i>
+                                            ยังไม่มีข้อมูลบันทึกเวลาทำงานในระบบ กรุณาอัปโหลดไฟล์เวลางานหรือกดโหลดข้อมูลทดสอบ
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: Upload and OCR -->
+            <section class="tab-content" id="tab-payslip-ocr">
+                <div class="row">
+                    <!-- Left: Upload zone & instruction -->
+                    <div class="col-6">
+                        <div class="card shadow-lg mb-4">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-upload text-primary"></i> 1. อัปโหลดสลิปเงินเดือนพนักงาน</h3>
+                            </div>
+                            <div class="card-body">
+                                <!-- Upload Payslip File -->
+                                <div class="upload-zone" id="payslip-upload-zone">
+                                    <div class="upload-icon"><i class="fa-solid fa-image"></i></div>
+                                    <h4>อัปโหลดไฟล์สลิปเงินเดือน (Pay Slip)</h4>
+                                    <p class="text-muted text-sm">รองรับรูปภาพ, PDF, Word, Excel, CSV และไฟล์ทั่วไป</p>
+                                    <span class="file-name-display" id="payslip-file-name">ยังไม่ได้เลือกไฟล์</span>
+                                    <input type="file" id="payslip-file-input" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" class="d-none">
+                                    <button type="button" class="btn btn-warning btn-sm mt-2" onclick="document.getElementById('payslip-file-input').click()">
+                                        เลือกไฟล์สลิปเงินเดือน
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-xs mt-2 d-none" id="clear-payslip-file-btn" onclick="event.stopPropagation();">
+                                        <i class="fa-solid fa-trash-can"></i> ล้างไฟล์
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: OCR / Manual Slip Data Input -->
+                    <div class="col-6">
+                        <div class="card shadow-lg mb-4">
+                            <div class="card-header justify-between flex-row align-center">
+                                <h3><i class="fa-solid fa-file-invoice-dollar text-warning"></i> 2. ข้อมูลจากสลิปเงินเดือนพนักงาน</h3>
+                                <div class="flex-row gap-2 align-center">
+                                    <div class="btn-group mr-2" id="payslip-view-toggle-group" style="display: none;">
+                                        <button type="button" class="btn btn-outline-primary btn-xs active" id="btn-show-payslip-file">รูปภาพสลิป</button>
+                                        <button type="button" class="btn btn-outline-primary btn-xs" id="btn-show-payslip-mock">รายการสลิปจำลอง</button>
+                                    </div>
+                                    <span class="badge bg-info-light text-info" id="ocr-status-badge">ยังไม่มีการประมวลผล</span>
+                                    <button type="button" class="btn btn-outline-danger btn-xs" id="clear-payslip-data-btn">
+                                        <i class="fa-solid fa-trash-can"></i> ล้างข้อมูล
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <!-- Split View: OCR Result Fields / Image Preview -->
+                                <div class="payslip-data-wrapper">
+                                    <!-- Payslip Image Preview Area -->
+                                    <div class="payslip-preview-area mb-3 text-center border rounded p-2 bg-dark-2 flex-column align-center justify-center" id="payslip-preview-container" style="min-height: 200px;">
+                                        <div id="payslip-preview-placeholder">
+                                            <i class="fa-regular fa-image fa-3x text-muted mb-2"></i>
+                                            <p class="text-muted text-xs">แสดงรูปสลิปเงินเดือนที่นี่เมื่ออัปโหลด</p>
+                                        </div>
+                                        <img id="payslip-image-preview" src="" alt="สลิปเงินเดือน" style="display:none; max-width: 100%; max-height: 350px; object-fit: contain;">
+                                        <canvas id="pdf-canvas" style="display:none; max-width: 100%; max-height: 350px;"></canvas>
+                                        <div id="payslip-file-preview" style="display:none; width: 100%;"></div>
+                                    </div>
+
+                                    <!-- Payslip Mock View Area -->
+                                    <div class="payslip-mock-area mb-3 text-center border rounded p-2 bg-dark-2 flex-column align-center justify-center d-none" id="payslip-mock-container" style="min-height: 200px;">
+                                        <!-- Mock payslip will be rendered here -->
+                                    </div>
+
+                                    <!-- OCR Fields Panel -->
+                                    <div class="ocr-fields">
+                                        <h4 class="mb-3 border-bottom pb-2">แก้ไขหรือยืนยันข้อมูลในสลิปจริง:</h4>
+                                        <form id="payslip-form">
+                                            <div class="row">
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-base-salary" class="form-label text-xs">เงินเดือนพื้นฐาน (บาท):</label>
+                                                        <input type="number" id="slip-base-salary" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-diligent" class="form-label text-xs">เบี้ยขยันในสลิป (บาท):</label>
+                                                        <input type="number" id="slip-diligent" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-nightshift" class="form-label text-xs">เบี้ยเลี้ยงกะดึกในสลิป (บาท):</label>
+                                                        <input type="number" id="slip-nightshift" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-probation-deduct" class="form-label text-xs">New staff deposit (15%):</label>
+                                                        <input type="number" id="slip-probation-deduct" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-unpaid-deduct" class="form-label text-xs">Unpaid leave (บาท):</label>
+                                                        <input type="number" id="slip-unpaid-deduct" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-attendance-deduct" class="form-label text-xs">Attendance Deduction (บาท):</label>
+                                                        <input type="number" id="slip-attendance-deduct" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-6">
+                                                    <div class="form-group">
+                                                        <label for="slip-extra-work-pay" class="form-label text-xs">บวกเพิ่มวันทำงานไม่เต็มเดือน (บาท):</label>
+                                                        <input type="number" id="slip-extra-work-pay" class="form-control form-control-sm" value="0">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group mt-3 border-top pt-2">
+                                                <label for="slip-net-salary-input" class="form-label font-bold text-success">ยอดรับสุทธิรวมในสลิป (บาท):</label>
+                                                <input type="number" id="slip-net-salary-input" class="form-control" style="font-size: 1.25rem; font-weight: bold;" value="0">
+                                                <small class="text-muted d-block mt-1">ตรวจสอบและแก้ไขยอดจริงในสลิปเงินเดือนเพื่อให้การคำนวณเปรียบเทียบแม่นยำที่สุด</small>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 5: Calculation Unit Tests -->
+            <section class="tab-content" id="tab-tests">
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header justify-between flex-row align-center">
+                        <h3><i class="fa-solid fa-vial text-success"></i> ระบบทดสอบตรวจสอบความถูกต้องของสูตรคำนวณ (Calculation Test Suite)</h3>
+                        <button class="btn btn-success" id="run-tests-btn">
+                            <i class="fa-solid fa-play"></i> เริ่มการทดสอบทั้งหมด
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-4">
+                            เพื่อยืนยันว่าการคำนวณตรงตามกฎระเบียบขององค์กรและมีความถูกต้อง 100% ระบบทดสอบนี้จะจำลองกรณีตัวอย่างพนักงานประเภทต่างๆ และเปรียบเทียบค่าที่คำนวณได้กับค่าที่คาดหวังตามโจทย์โดยอัตโนมัติ
+                        </p>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped" id="test-suite-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%">ชุดที่</th>
+                                        <th style="width: 35%">กรณีทดสอบ (Test Case Details)</th>
+                                        <th style="width: 25%">ค่าที่คาดหวัง (Expected Outcomes)</th>
+                                        <th style="width: 25%">ผลลัพธ์ที่ประมวลผลได้ (Actual Outcomes)</th>
+                                        <th style="width: 10%">สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="test-suite-body">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4 text-muted">คลิกปุ่ม <strong>"เริ่มการทดสอบทั้งหมด"</strong> เพื่อรันผลการตรวจสอบสูตร</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 6: Admin Submission Review -->
+            <section class="tab-content" id="tab-admin-audit">
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header justify-between flex-row align-center">
+                        <h3><i class="fa-solid fa-user-shield text-danger"></i> เมนูส่งตรวจสอบพนักงาน (Admin submission dashboard)</h3>
+                        <button class="btn btn-primary btn-sm" onclick="renderAdminAuditPanel()">
+                            <i class="fa-solid fa-arrows-rotate"></i> รีเฟรชข้อมูล
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-4" id="admin-panel-description">
+                            หน้ารวบรวมข้อมูลของพนักงานทุกคนที่ผ่านการตรวจสอบระบบสลิปและส่งข้อมูลตรวจสอบเข้ามา แอดมินสามารถเปิดดูไฟล์ของแต่ละบุคคล ตรวจดูบันทึกรหัสผ่าน ป้อนความคิดเห็นหรือชี้แจงความผิดพลาดได้จากหน้านี้
+                        </p>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped text-center" id="admin-audit-table" style="font-size: 0.9rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%">ลำดับ</th>
+                                        <th style="width: 15%">วันที่ตรวจ & ผู้ตรวจ</th>
+                                        <th style="width: 15%">ชื่อพนักงาน</th>
+                                        <th style="width: 10%">รอบเดือน</th>
+                                        <th style="width: 10%">รหัสผ่านล็อก</th>
+                                        <th style="width: 10%">ยอดจริง</th>
+                                        <th style="width: 10%">ยอดสลิป</th>
+                                        <th style="width: 10%">ผลลัพธ์</th>
+                                        <th style="width: 15%">การคอมเม้นท์ & จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-audit-tbody">
+                                    <tr>
+                                        <td colspan="9" class="text-center py-4 text-muted">กำลังโหลดข้อมูล...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 7: Employee Audit Results Review -->
+            <section class="tab-content" id="tab-employee-results">
+                <div class="card shadow-lg mb-4">
+                    <div class="card-header justify-between flex-row align-center">
+                        <h3><i class="fa-solid fa-clipboard-check text-success"></i> รายงานผลการตรวจสอบเงินเดือน (Audit Results Dashboard)</h3>
+                        <button class="btn btn-success btn-sm" onclick="renderEmployeeResultsPanel()">
+                            <i class="fa-solid fa-arrows-rotate"></i> อัปเดตข้อมูล
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-4">
+                            หน้ารายงานผลการตรวจสอบที่ทีมตรวจสอบ (Auditor) ได้ทำการตรวจสอบและคอมเม้นท์ความถูกต้องเรียบร้อยแล้ว
+                        </p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped text-center" id="employee-results-table" style="font-size: 0.9rem;">
+                                <thead>
+                                   <tr>
+                                       <th style="width: 5%">ลำดับ</th>
+                                       <th style="width: 15%">วันที่ตรวจเสร็จ</th>
+                                       <th style="width: 15%">ผู้ตรวจสอบ</th>
+                                       <th style="width: 10%">รอบเดือน</th>
+                                       <th style="width: 15%">ยอดคำนวณจริง</th>
+                                       <th style="width: 15%">ยอดในสลิป</th>
+                                       <th style="width: 10%">สถานะ</th>
+                                       <th style="width: 15%">ความคิดเห็นจากทีมตรวจสอบ</th>
+                                   </tr>
+                                </thead>
+                                <tbody id="employee-results-tbody">
+                                   <tr>
+                                       <td colspan="8" class="text-center py-4 text-muted">กำลังโหลดข้อมูล...</td>
+                                   </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Export Summary Modal / Printing Elements -->
+    <div id="print-report-container" style="display:none;"></div>
+
+    <!-- Modal for Processing / Canceling Uploaded Files -->
+    <div class="modal-overlay" id="upload-status-modal" style="display:none;">
+        <div class="modal-card card shadow-lg">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-cloud-arrow-up text-primary"></i> อัปโหลดเอกสารครบถ้วนแล้ว</h3>
+            </div>
+            <div class="modal-body">
+                <p class="mb-4 text-muted" style="font-size: 0.9rem; line-height: 1.5;">ระบบตรวจพบการอัปโหลดไฟล์เวลางานและสลิปเงินเดือนครบถ้วนแล้ว กรุณากดปุ่ม <strong>"เริ่มประมวลผล"</strong> เพื่อคำนวณตรวจสอบความถูกต้อง หรือกด <strong>"ยกเลิกรายการ"</strong> หากอัปโหลดไฟล์ผิดและต้องการอัปโหลดใหม่</p>
+                <div class="uploaded-files-summary" style="background: var(--bg-primary); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color);">
+                    <div class="file-summary-item flex-row align-center mb-3">
+                        <i class="fa-solid fa-file-excel text-success" style="font-size: 1.6rem; width: 30px; text-align: center;"></i>
+                        <div>
+                            <span class="d-block font-semibold" style="font-size: 0.85rem;">ไฟล์บันทึกเวลางาน:</span>
+                            <small class="text-muted" id="modal-timesheet-name" style="word-break: break-all;">-</small>
+                        </div>
+                    </div>
+                    <div class="file-summary-item flex-row align-center">
+                        <i class="fa-solid fa-file-invoice-dollar text-warning" style="font-size: 1.6rem; width: 30px; text-align: center;"></i>
+                        <div>
+                            <span class="d-block font-semibold" style="font-size: 0.85rem;">ไฟล์สลิปเงินเดือน:</span>
+                            <small class="text-muted" id="modal-payslip-name" style="word-break: break-all;">-</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer flex-row justify-end mt-4">
+                <button type="button" class="btn btn-secondary btn-sm" id="modal-cancel-btn">
+                    <i class="fa-solid fa-trash-can"></i> ยกเลิกและอัปโหลดใหม่
+                </button>
+                <button type="button" class="btn btn-success btn-sm" id="modal-process-btn">
+                    <i class="fa-solid fa-circle-play"></i> เริ่มประมวลผลข้อมูล
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tesseract OCR Load Indicator Overlay -->
+    <div class="loader-overlay" id="loading-overlay">
+        <div class="loader"></div>
+        <div class="loader-text" id="loading-text">กำลังประมวลผลข้อมูล...</div>
+    </div>
+
+    <!-- Authentication Gate Overlay -->
+    <div id="auth-overlay" class="auth-overlay">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h2><i class="fa-solid fa-shield-halved text-primary"></i> ยืนยันตัวตน (Auth Gate)</h2>
+                <p class="text-muted text-xs">กรุณากรอกชื่อและรหัสผ่านเพื่อเข้าใช้งาน</p>
+            </div>
+            <form id="auth-form">
+                <div class="form-group">
+                    <label class="form-label" for="login-name" id="label-login-name">ชื่อ-นามสกุล (ภาษาอังกฤษ):</label>
+                    <input type="text" id="login-name" class="form-control" placeholder="e.g. John Doe" required pattern="^[a-zA-Z\s]+$">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="login-password" id="label-login-password">รหัสผ่าน 4 หลัก (เริ่มต้น 0000):</label>
+                    <input type="password" id="login-password" class="form-control text-center" placeholder="••••" required maxlength="4" pattern="^[0-9]{4}$" style="font-size: 1.5rem; letter-spacing: 0.5rem;">
+                </div>
+                <div id="auth-error-msg" class="text-danger text-xs mb-3 text-center" style="display: none;"></div>
+                <button type="submit" class="btn btn-primary btn-block" id="btn-login-submit">
+                    <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ (Login)
+                </button>
+                <div class="text-center mt-3">
+                    <a href="#" id="forgot-password-link" style="color: var(--primary-color); font-size: 0.8rem; text-decoration: none; display: inline-block; transition: opacity 0.2s;">
+                        <i class="fa-solid fa-key"></i> ลืมรหัสผ่าน (Forgot Password)
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Role Selector Modal after Authentication -->
+    <div class="modal-overlay" id="role-select-modal" style="display:none; z-index: 10001;">
+        <div class="modal-card card shadow-lg" style="max-width: 400px; text-align: center; padding: 24px;">
+            <div class="modal-header" style="justify-content: center; margin-bottom: 16px; border: none; padding: 0;">
+                <h3 style="margin: 0; font-size: 1.25rem; font-weight: bold; color: var(--text-main);"><i class="fa-solid fa-users text-primary"></i> เลือกประเภทผู้ใช้งาน (User Role)</h3>
+            </div>
+            <div class="modal-body" style="padding: 10px 0;">
+                <p class="text-muted mb-4" style="font-size: 0.9rem;">กรุณาระบุประเภทบทบาทของคุณเพื่อเปิดใช้งานระบบ:</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button class="btn btn-primary btn-block btn-lg" id="btn-role-employee" style="padding: 12px; font-weight: bold; font-size: 1rem; border-radius: 8px;">
+                        <i class="fa-solid fa-user-tie"></i> พนักงาน (Employee / Staff)
+                    </button>
+                    <button class="btn btn-danger btn-block btn-lg" id="btn-role-auditor" style="padding: 12px; font-weight: bold; font-size: 1rem; border-radius: 8px; border-color: var(--danger-color);">
+                        <i class="fa-solid fa-user-shield"></i> ผู้ตรวจสอบ (Auditor / Admin)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="change-pw-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-key text-primary"></i> เปลี่ยนรหัสผ่าน</h3>
+                <button class="close-modal-btn" id="close-change-pw-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="change-pw-form">
+                    <div class="form-group">
+                        <label class="form-label" for="new-password" id="label-new-password">รหัสผ่านใหม่ 4 หลัก:</label>
+                        <input type="password" id="new-password" class="form-control text-center" placeholder="••••" required maxlength="4" pattern="^[0-9]{4}$" style="font-size: 1.5rem; letter-spacing: 0.5rem;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="confirm-new-password" id="label-confirm-new-password">ยืนยันรหัสผ่านใหม่:</label>
+                        <input type="password" id="confirm-new-password" class="form-control text-center" placeholder="••••" required maxlength="4" pattern="^[0-9]{4}$" style="font-size: 1.5rem; letter-spacing: 0.5rem;">
+                    </div>
+                    <div id="change-pw-error-msg" class="text-danger text-xs mb-3 text-center" style="display: none;"></div>
+                    <button type="submit" class="btn btn-primary btn-block" id="btn-save-pw">
+                        <i class="fa-solid fa-floppy-disk"></i> บันทึกรหัสผ่านใหม่
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Adjust Amount Modal -->
+    <div id="adjust-amount-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="adjust-modal-title"><i class="fa-solid fa-calculator text-primary"></i> ปรับปรุงยอดเงิน</h3>
+                <button class="close-modal-btn" id="close-adjust-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" id="adjust-modal-label-item">รายการ:</label>
+                    <input type="text" id="adjust-modal-item-name" class="form-control" readonly style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" id="adjust-modal-label-type">การปรับปรุง:</label>
+                    <input type="text" id="adjust-modal-type-name" class="form-control" readonly style="background-color: var(--bg-primary); border-color: var(--border-color); font-weight: bold;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="adjust-modal-amount" id="adjust-modal-label-amount">จำนวนเงิน (บาท):</label>
+                    <input type="number" id="adjust-modal-amount" class="form-control" placeholder="0.00" step="0.01" min="0">
+                </div>
+                <div class="modal-footer flex-row justify-end mt-4 gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm" id="adjust-modal-cancel-btn">ยกเลิก</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="adjust-modal-save-btn">บันทึกยอดปรับปรุง</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Note Modal -->
+    <div id="edit-note-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-comment-dots text-primary"></i> บันทึกหมายเหตุ</h3>
+                <button class="close-modal-btn" id="close-note-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">รายการ:</label>
+                    <input type="text" id="note-modal-item-name" class="form-control" readonly style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="note-modal-text">ข้อความหมายเหตุ:</label>
+                    <textarea id="note-modal-text" class="form-control" rows="3" placeholder="ระบุเหตุผลหรือหมายเหตุประกอบรายการ..."></textarea>
+                </div>
+                <div class="modal-footer flex-row justify-end mt-4 gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm" id="note-modal-cancel-btn">ยกเลิก</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="note-modal-save-btn">บันทึกหมายเหตุ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dispute Zoom Modal -->
+    <div id="dispute-zoom-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 1050;">
+        <div class="modal-card" style="max-width: 600px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="dispute-zoom-title"><i class="fa-solid fa-image text-primary"></i> หลักฐานขอยกเลิก</h3>
+                <button class="close-modal-btn" onclick="window.closeDisputeZoom()">&times;</button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="dispute-zoom-img" src="" alt="Proof Image" style="max-width: 100%; max-height: 400px; border-radius: 6px; border: 1px solid var(--border-color); object-fit: contain;">
+                <div class="mt-3 gap-2 d-flex justify-content-center">
+                    <button class="btn btn-secondary btn-sm" onclick="window.closeDisputeZoom()">ปิด (Close)</button>
+                    <a id="dispute-zoom-download" class="btn btn-primary btn-sm" href="" download="dispute_proof.jpg" onclick="this.href=document.getElementById('dispute-zoom-img').src">
+                        <i class="fa-solid fa-download"></i> ดาวน์โหลด (Download)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom App Script -->
+    <script src="app.js?v=22"></script>
+</body>
+</html>
+

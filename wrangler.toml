@@ -1,3 +1,8 @@
 name = "check-correct-salary"
 pages_build_output_dir = "."
 compatibility_date = "2026-07-15"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "audit_db"
+database_id = "ac79710e-2ea0-4547-add9-3bf7e86cddca"

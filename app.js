@@ -3926,8 +3926,24 @@ function parseExcelOrCsvGrid(grid) {
         if (leaveTypeIdx === -1) leaveTypeIdx = 5;
     }
 
+    // Detect if the first row is actually a header row or a data row
+    let startRow = 1;
+    if (grid[0] && grid[0].length > 0) {
+        const testRowStr = grid[0].map(val => String(val || '').toLowerCase()).join(" ");
+        const hasHeaderKeyword = testRowStr.includes('date') || 
+                                 testRowStr.includes('วัน') || 
+                                 testRowStr.includes('วันที่') || 
+                                 testRowStr.includes('กะ') || 
+                                 testRowStr.includes('shift') || 
+                                 testRowStr.includes('เวลาเข้า') || 
+                                 testRowStr.includes('clock in');
+        if (!hasHeaderKeyword) {
+            startRow = 0; // No headers in the first row, start loop from 0!
+        }
+    }
+
     const newLogs = [];
-    for (let r = 1; r < grid.length; r++) {
+    for (let r = startRow; r < grid.length; r++) {
         const row = grid[r];
         if (!row || row.length === 0 || !row[dateIdx]) continue;
 

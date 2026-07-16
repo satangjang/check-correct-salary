@@ -149,7 +149,7 @@ const translationSelectorMap = {
     "#timesheet-upload-zone span.text-muted": { en: "Supports CSV, Excel (.xlsx, .xls), TXT, JSON", zh: "支援 CSV, Excel (.xlsx, .xls), TXT, JSON", th: "รองรับไฟล์ CSV, Excel (.xlsx, .xls), TXT, JSON" },
     "#timesheet-upload-zone button.btn-primary": { en: "<i class='fa-solid fa-folder-open'></i> Select File", zh: "<i class='fa-solid fa-folder-open'></i> 選擇文件", th: "<i class='fa-solid fa-folder-open'></i> เลือกไฟล์เวลางาน" },
     "#clear-timesheet-btn": { en: "<i class='fa-solid fa-trash-can'></i> Clear", zh: "<i class='fa-solid fa-trash-can'></i> 清除", th: "<i class='fa-solid fa-trash-can'></i> ล้างไฟล์" },
-    "#download-csv-template": { en: "<i class='fa-solid fa-download'></i> Download Template", zh: "<i class='fa-solid fa-download'></i> 下載範本", th: "<i class='fa-solid fa-download'></i> ดาวน์โหลดเทมเพลต CSV" },
+    "#download-csv-template": { en: "<i class='fa-solid fa-download'></i> Download CSV Report", zh: "<i class='fa-solid fa-download'></i> 下載 CSV 報表", th: "<i class='fa-solid fa-download'></i> ดาวน์โหลดตารางตรวจสอบ CSV" },
     
     // TAB 4: Upload Payslip
     "#tab-payslip-ocr .col-6:nth-child(1) .card-header h3": { en: "<i class='fa-solid fa-upload text-primary'></i> 1. Upload Payslip Image", zh: "<i class='fa-solid fa-upload text-primary'></i> 1. 上傳薪資單圖片", th: "<i class='fa-solid fa-upload text-primary'></i> 1. อัปโหลดสลิปเงินเดือนพนักงาน" },
@@ -4057,28 +4057,189 @@ function parseExcelOrCsvGrid(grid) {
     hideLoader();
 }
 
-// Download dynamic CSV Template
+// Download dynamic CSV Template or active audit report
 function downloadCSVTemplate() {
-    const csvContent = 
-        "วันที่ (Date),กะ (Shift),เวลาเข้า (Clock In),เวลาออก (Clock Out),สถานะการลงงาน (Status),ประเภทวันหยุด (Leave Type)\n" +
-        "2026-05-01,night,20:00,08:00,full day,\n" +
-        "2026-05-02,night,19:55,08:00,full day,\n" +
-        "2026-05-03,night,20:00,08:00,full day,\n" +
-        "2026-05-04,night,,,on Leave,off\n" +
-        "2026-05-05,night,20:00,08:00,full day,\n" +
-        "2026-05-10,night,20:15,08:00,full day,*(เข้างานสาย)\n" +
-        "2026-05-15,night,,,absent,\n" +
-        "2026-05-20,night,,,on Leave,shift_change\n" +
-        "2026-05-21,day,08:00,20:00,full day,*(เริ่มเข้ากะเช้าวันแรก)\n" +
-        "2026-05-25,day,09:00,21:00,full day,*(เริ่มเวลาทำงานใหม่)\n" +
-        "2026-05-26,day,09:05,21:00,full day,*(เข้างานสายใหม่)\n" +
-        "2026-05-27,day,,,on Leave,compulsory";
+    const lang = state.language || 'en';
+    
+    if (!state.hasChosenMonth || !state.attendanceLogs || state.attendanceLogs.length === 0) {
+        // Download blank template
+        const csvContent = 
+            "วันที่ (Date),กะ (Shift),เวลาเข้า (Clock In),เวลาออก (Clock Out),สถานะการลงงาน (Status),ประเภทวันหยุด (Leave Type)\n" +
+            "2026-05-01,night,20:00,08:00,full day,\n" +
+            "2026-05-02,night,19:55,08:00,full day,\n" +
+            "2026-05-03,night,20:00,08:00,full day,\n" +
+            "2026-05-04,night,,,on Leave,off\n" +
+            "2026-05-05,night,20:00,08:00,full day,\n" +
+            "2026-05-10,night,20:15,08:00,full day,*(เข้างานสาย)\n" +
+            "2026-05-15,night,,,absent,\n" +
+            "2026-05-20,night,,,on Leave,shift_change\n" +
+            "2026-05-21,day,08:00,20:00,full day,*(เริ่มเข้ากะเช้าวันแรก)\n" +
+            "2026-05-25,day,09:00,21:00,full day,*(เริ่มเวลาทำงานใหม่)\n" +
+            "2026-05-26,day,09:05,21:00,full day,*(เข้างานสายใหม่)\n" +
+            "2026-05-27,day,,,on Leave,compulsory";
+            
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `attendance_template_${state.month}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+    }
+
+    // Export current audit table records to CSV!
+    const headers = [
+        lang === 'th' ? "ลำดับ" : "No.",
+        lang === 'th' ? "วันที่" : "Date",
+        lang === 'th' ? "กะการทำงาน" : "Shift",
+        lang === 'th' ? "เวลาเข้า" : "Clock In",
+        lang === 'th' ? "เวลาออก" : "Clock Out",
+        lang === 'th' ? "สถานะ" : "Status",
+        lang === 'th' ? "ประเภทวันหยุด" : "Leave Type",
+        lang === 'th' ? "การเข้าสาย" : "Lateness",
+        lang === 'th' ? "รายการเพิ่ม/หักเงิน" : "Additions/Deductions"
+    ];
+
+    let rows = [headers.join(",")];
+    let activeLateCount = 0;
+
+    state.attendanceLogs.forEach((log, index) => {
+        const [year, month, day] = log.date.split("-");
+        const dateThai = log.dateDisplay || `${day}/${month}/${parseInt(year) + 543}`;
+        const shiftStr = log.shift === 'night' ? (lang === 'th' ? "ดึก (Night)" : "Night") : (lang === 'th' ? "เช้า (Day)" : "Day");
+        const clockInStr = log.clockIn || "";
+        const clockOutStr = log.clockOut || "";
+        const statusStr = log.status || "";
         
+        let leaveTypeStr = "";
+        if (log.status === 'on Leave') {
+            if (log.leaveType === 'off') leaveTypeStr = lang === 'th' ? "วันหยุดประจำ (Off day)" : "Off day";
+            else if (log.leaveType === 'compulsory') leaveTypeStr = lang === 'th' ? "วันหยุดบังคับ (Compulsory)" : "Compulsory";
+            else if (log.leaveType === 'shift_change') leaveTypeStr = lang === 'th' ? "วันหยุดเปลี่ยนกะ (Shift Change)" : "Shift Change";
+            else if (log.leaveType === 'unpaid') leaveTypeStr = lang === 'th' ? "ลากิจไม่รับเงิน (Unpaid Leave)" : "Unpaid Leave";
+        }
+
+        const latenessStr = log.isLate ? (lang === 'th' ? "สาย" : "Late") : (lang === 'th' ? "ทัน" : "On Time");
+
+        // Calculate daily adjustments for CSV
+        let additions = [];
+        let deductions = [];
+        let addTotal = 0;
+        let deductTotal = 0;
+
+        if (log.shift === 'night' && (log.status === 'full day' || log.status === 'partialday')) {
+            const isAfterCutoff = state.hasTimeChange && state.timeChangeDate && (log.date >= state.timeChangeDate);
+            const currentRules = isAfterCutoff ? state.rulesAfter : state.rulesBefore;
+            const nightEndStr = currentRules.nightEnd || '08:00';
+            const parts = nightEndStr.split(':').map(Number);
+            const endHour = (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) ? parts[0] + (parts[1]/60) : 8;
+            const dailyNightAllowance = endHour * 10.25;
+            addTotal += dailyNightAllowance;
+            additions.push(`เบี้ยเลี้ยงกะดึก +฿${dailyNightAllowance.toFixed(2)}`);
+        }
+
+        let daysInMonth = state.attendanceLogs.length;
+        if (state.attendanceLogs && state.attendanceLogs.length > 0 && state.attendanceLogs[0].date) {
+            const parts = state.attendanceLogs[0].date.split("-").map(Number);
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                daysInMonth = new Date(parts[0], parts[1], 0).getDate();
+            }
+        }
+        const dailyRate = (state.baseSalary || 20000) / daysInMonth;
+        const usdRate = state.exchangeRate || 35.00;
+
+        if (log.status === 'incomplete') {
+            if (log.isWaived) {
+                deductions.push('สแกนไม่ครบ (ยกเว้น)');
+            } else if (log.reportedScanOut) {
+                deductions.push('สแกนไม่ครบ (แจ้งสาเหตุแล้ว)');
+            } else {
+                const cost = 5 * usdRate;
+                deductTotal += cost;
+                deductions.push(`สแกนไม่ครบ -฿${cost.toFixed(2)}`);
+            }
+        } else if (log.status === 'partialday') {
+            const workedHrs = getWorkedHours(log.clockIn, log.clockOut);
+            if (workedHrs >= 8.0) {
+                if (log.isWaived) {
+                    deductions.push('ทำงานบางส่วน (ยกเว้น)');
+                } else {
+                    const cost = 0.5 * dailyRate;
+                    deductTotal += cost;
+                    deductions.push(`ทำงานบางส่วน -฿${cost.toFixed(2)}`);
+                }
+            }
+        } else if (log.status === 'absent') {
+            if (log.isWaived) {
+                deductions.push('ขาดงาน (ยกเว้น)');
+            } else {
+                const cost = dailyRate;
+                deductTotal += cost;
+                deductions.push(`ขาดงาน -฿${cost.toFixed(2)}`);
+            }
+        } else if (log.status === 'on Leave' && log.leaveType === 'unpaid') {
+            if (log.isWaived) {
+                deductions.push('ลากิจไม่รับเงิน (ยกเว้น)');
+            } else {
+                const cost = dailyRate;
+                deductTotal += cost;
+                deductions.push(`ลากิจไม่รับเงิน -฿${cost.toFixed(2)}`);
+            }
+        }
+        
+        if (log.isLate) {
+            if (log.isWaived) {
+                deductions.push('สาย (ยกเว้น)');
+            } else {
+                activeLateCount++;
+                if (activeLateCount === 1) {
+                    deductions.push('สาย (ยกเว้นครั้งแรก)');
+                } else {
+                    const cost = 5 * usdRate;
+                    deductTotal += cost;
+                    deductions.push(`สาย -฿${cost.toFixed(2)}`);
+                }
+            }
+        }
+
+        let summaryParts = [];
+        if (addTotal > 0) {
+            summaryParts.push(`+฿${addTotal.toFixed(2)} (${additions.join(" / ")})`);
+        }
+        if (deductTotal > 0) {
+            summaryParts.push(`-฿${deductTotal.toFixed(2)} (${deductions.join(" / ")})`);
+        } else if (deductions.length > 0) {
+            summaryParts.push(`${deductions.join(" / ")}`);
+        }
+
+        const adjustmentStr = summaryParts.join(" | ");
+
+        // Escape fields to avoid CSV breakages
+        const csvRow = [
+            index + 1,
+            `"${dateThai}"`,
+            `"${shiftStr}"`,
+            `"${clockInStr}"`,
+            `"${clockOutStr}"`,
+            `"${statusStr}"`,
+            `"${leaveTypeStr}"`,
+            `"${latenessStr}"`,
+            `"${adjustmentStr.replace(/"/g, '""')}"`
+        ];
+
+        rows.push(csvRow.join(","));
+    });
+
+    const csvContent = rows.join("\n");
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `attendance_template_${state.month}.csv`);
+    
+    const safeName = (state.employeeName || "employee").toLowerCase().replace(/\s+/g, "_");
+    link.setAttribute("download", `attendance_audit_${safeName}_${state.month}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
